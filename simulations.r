@@ -32,8 +32,8 @@ ttest <- function(dat){
   summary(mod)$coef['treatment',c('Estimate','Pr(>|t|)')]
 }
 
-doAll <- function(i=1,n){
-  dat <- makeDat(n=n)
+doAll <- function(i=1,n,p){
+  dat <- makeDat(n=n,p=p)
   rbind(backwards=backwards(dat),
 #    oracle=oracle(dat),
     ttest=ttest(dat))
