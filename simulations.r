@@ -1,3 +1,4 @@
+library(tidyverse)
 ns=c(50,100,500,1000)
 
 ### covariate selection
@@ -42,16 +43,46 @@ doAll <- function(i=1,n,p){
 
 
 library(parallel)
-cl <- makeCluster(8)
+cl <- makeCluster(12)
 clusterExport(cl,list('makeDat','backwards','oracle','ttest','doAll'))
-design <- expand.grid(n=ns,p=c(5,10,20))
+design <- expand.grid(n=ns,p=c(2,5,10))
 design <- subset(design,n> (p+1)*(p+2)/2+1)
 res <- lapply(1:nrow(design),
-              function(i) parLapply(cl,1:1000,doAll,n=design$n[i],p=design$p[i]))
+              function(i){
+                  cat(round(i/nrow(design)*100),'% ',sep='')
+                  parLapply(cl,1:1000,doAll,n=design$n[i],p=design$p[i])
+              })
+cat('\n')
 save(res,design,file='variableSelection.RData')
 
 lev <- sapply(res, function(run) rowMeans(sapply(run,function(x) x[,2]<0.05)))
+lev=cbind(design,t(lev))
 save(res,design,lev,file='variableSelection.RData')
+
+rej=sapply(res, function(run) rowSums(sapply(run,function(x) x[,2]<0.05)))
+
+backTest=lapply(lev$backwards*1000,binom.test,n=1000)
+ttestTest=lapply(lev$ttest*1000,binom.test,n=1000)
+
+backCI <- sapply(backTest,function(x) x$conf.int)
+ttestCI <- sapply(backTest,function(x) x$conf.int)
+
+lev=cbind(lev,backCI=t(backCI))
+
+pdat=lev%>%
+    pivot_longer(c(backwards,ttest),names_to=c('method'),values_to='error')
+
+ci=sapply(pdat$error,function(x) binom.test(x*1000,1000)$conf.int)
+pdat=cbind(pdat,ci=t(ci))
+
+pdat$n=pdat$n+ifelse(pdat$method=='ttest',10,-10)
+
+pdat%>%
+    ggplot(aes(n,error,ymin=ci.1,ymax=ci.2,color=method,group=method))+geom_point()+geom_line()+
+    geom_errorbar(width=0)+
+    geom_hline(yintercept=0.05,linetype='dotted')+
+    facet_wrap(~p)
+ggsave('covSelection.jpg')
 
 
 
